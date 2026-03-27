@@ -1,20 +1,5 @@
-
-# API Keys and Secrets (CRITICAL)
+# .gitignore
+.streamlit/
 .env
-
-# Python Virtual Environments
 venv/
-env/
-.venv/
-
-# Python Cache (Junk files)
-**/__pycache__/
-*.py[cod]
-*$py.class
-
-# IDE Settings (Optional)
-.vscode/
-.idea/
-
-# Large log files
-*.log
+__pycache__/
