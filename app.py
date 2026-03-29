@@ -3,7 +3,7 @@ import requests
 import uuid
 from supabase import create_client, Client
 
-# --- SETUP --- [cite: 29]
+# --- SETUP --- 
 try:
     SUPABASE_URL = st.secrets["SUPABASE_URL"]
     SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
@@ -12,6 +12,7 @@ except KeyError as e:
     st.error(f"Missing Secret: {e}. Check your .streamlit/secrets.toml")
     st.stop()
 
+# Initialize Supabase Client
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 REPO_OWNER = "tanisha-tanvi"
@@ -33,16 +34,17 @@ def get_collaborators():
     except:
         return ["Guest_User"]
 
-st.set_page_config(page_title="Team Chatbox + IoT", page_icon="🌡️", layout="wide") # Layout widened for IoT 
+# Configure Page Layout
+st.set_page_config(page_title="Team Chatbox + IoT", page_icon="🌡️", layout="wide") 
 st.title("👨‍💻 Collaborator Chatroom")
 
 collaborators = get_collaborators()
 
-# --- SIDEBAR: IoT MONITORING --- [cite: 5, 25]
+# --- SIDEBAR: IoT MONITORING --- 
 with st.sidebar:
     st.header("🏢 Lab IoT Monitor")
     
-    # Logic to fetch the latest temperature from 'IoT-Sensor-Node' [cite: 26, 40]
+    # FETCH LATEST TEMPERATURE
     try:
         iot_res = supabase.table("messages") \
             .select("content") \
@@ -52,12 +54,24 @@ with st.sidebar:
             .execute()
         
         if iot_res.data:
-            latest_temp = iot_res.data[0]['content']
-            st.metric(label="Current Lab Temp", value=latest_temp) # Dynamic metric 
-            if "ALERT" in latest_temp:
+            latest_raw = iot_res.data[0]['content']
+            # Clean "Temp: 24.00°C" to just "24.00°C" for the metric
+            display_temp = latest_raw.replace("Temp: ", "")
+            
+            # BIG VISIBILITY: Professional Dashboard Metric
+            st.metric(label="Current Lab Temperature", value=display_temp)
+            
+            if "ALERT" in latest_raw:
                 st.error("⚠️ Temperature Threshold Exceeded!")
+            else:
+                st.success("✅ Sensor Streaming Live")
         else:
             st.info("Waiting for IoT data...")
+            
+        # Refresh Button for Demo
+        if st.button("🔄 Refresh Live Feed"):
+            st.rerun()
+            
     except Exception as e:
         st.sidebar.write("IoT Data unavailable")
 
@@ -70,7 +84,7 @@ with st.sidebar:
     for user in collaborators:
         st.caption(f"👤 {user}")
 
-# --- MAIN CHAT INTERFACE --- [cite: 16, 68]
+# --- MAIN CHAT INTERFACE: FILE UPLOADS ---
 with st.expander("📁 Upload Files / Photos from PC"):
     uploaded_file = st.file_uploader("Choose a file", type=["png", "jpg", "jpeg", "pdf", "zip", "docx", "mp4"])
     
@@ -82,7 +96,7 @@ with st.expander("📁 Upload Files / Photos from PC"):
                     unique_name = f"{uuid.uuid4()}.{file_ext}"
                     storage_path = f"uploads/{unique_name}"
                     
-                    # Upload to Supabase Buckets [cite: 27, 34]
+                    # Upload to Supabase Buckets
                     supabase.storage.from_("chat-media").upload(
                         path=storage_path,
                         file=uploaded_file.getvalue(),
@@ -105,7 +119,7 @@ with st.expander("📁 Upload Files / Photos from PC"):
 
 st.divider()
 
-# --- FETCH & DISPLAY MESSAGES --- [cite: 26, 41]
+# --- FETCH & DISPLAY MESSAGES ---
 try:
     res = supabase.table("messages").select("*").order("created_at", desc=True).limit(30).execute()
     messages = res.data
@@ -113,19 +127,24 @@ except Exception as e:
     st.error(f"Database error: {e}")
     messages = []
 
+# Displaying the message loop
 for m in reversed(messages):
-    # Skip raw IoT sensor data in the main chat if you prefer it only in the sidebar [cite: 16]
-    if m['user_name'] == "IoT-Sensor-Node" and "ALERT" not in m['content']:
-        continue
-        
+    is_iot = m['user_name'] == "IoT-Sensor-Node"
     is_me = m['user_name'] == current_user
+    
+    # Use assistant style for others/bot, user style for self
     with st.chat_message("user" if is_me else "assistant"):
-        # Distinct styling for IoT Alerts 
-        name_display = f"🤖 {m['user_name']}" if m['user_name'] == "IoT-Sensor-Node" else f"**{m['user_name']}**"
-        st.markdown(name_display)
         
-        st.write(m['content'])
+        if is_iot:
+            # IoT Messages: Visible in chat with a blue highlight
+            st.markdown("🤖 **IoT Live Feed**")
+            st.info(m['content'])
+        else:
+            # Standard User Messages
+            st.markdown(f"**{m['user_name']}**")
+            st.write(m['content'])
         
+        # Display attachments if they exist
         if m.get('file_url'):
             url = m['file_url']
             if any(url.lower().endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".webp", ".gif"]):
@@ -133,6 +152,7 @@ for m in reversed(messages):
             else:
                 st.link_button(f"🔗 View Attachment", url)
 
+# --- SEND MESSAGE INPUT ---
 if prompt := st.chat_input(f"Message as {current_user}..."):
     new_msg = {"content": prompt, "user_name": current_user, "file_url": None}
     supabase.table("messages").insert(new_msg).execute()
